@@ -1,13 +1,25 @@
 ## MySql cookbook by hangull
+> Guida aggiornata alla versione 5.7
+
 **SQL** = Structured Query Language<br>
 **CRUD** = Create. Retrieve. Update. Delete<br>
+**ACID** = Atomicity. Consistency. Isolation. Durability<br>
+- **Atomicity** - Il concetto più fondamentale dei 4<br>
+  l'esecuzione della transazione deve essere o totale o nulla, non sono ammesse esecuzioni parziali.
+- **Consistency**<br>
+  quando inizia una transazione il database si trova in uno stato coerente e quando la transazione termina il database deve essere in un altro stato coerente, ovvero non deve violare eventuali vincoli di integrità, quindi non devono verificarsi contraddizioni (inconsistenza dei dati ) tra i dati archiviati nel DB.
+- **Isolation**<br>
+  ogni transazione deve essere eseguita in modo isolato e indipendente dalle altre transazioni, l'eventuale fallimento di una transazione non deve interferire con le altre transazioni in esecuzione.
+- **Durability**<br>
+  detta anche **persistenza**, si riferisce al fatto che una volta che una transazione abbia richiesto un commit work, i cambiamenti apportati non dovranno essere più persi. Per evitare che nel lasso di tempo fra il momento in cui la base di dati si impegna a scrivere le modifiche e quello in cui li scrive effettivamente si verifichino perdite di dati dovuti a malfunzionamenti, vengono tenuti dei registri di log dove sono annotate tutte le operazioni sul DB.
+> InnoDB = ACID; MyISAM = not ACID
 
 Table of Contents
 ---
 ---
 - [Clients](#clients)
 - [mysql CLI commands](#mysql-cli-commands)
-  - [Engine orriented commands](#engine-orriented-commands)
+  - [Engine oriented commands](#engine-oriented-commands)
   - [Modes](#modes)
   - [Ofted used even by the server that communicate with the DB (CRUD)](#ofted-used-even-by-the-server-that-communicate-with-the-db-crud)
   - [Altering existing schemas](#altering-existing-schemas)
@@ -25,6 +37,7 @@ Table of Contents
   - [Operators](#operators)
     - [like](#like)
     - [Logical operators](#logical-operators)
+  - [Variables](#variables)
 - [Data Types](#data-types)
   - [char vs varchar](#char-vs-varchar)
   - [bit](#bit)
@@ -39,9 +52,14 @@ Table of Contents
   - [Cartesian Product](#cartesian-product)
   - [Inner Join](#inner-join)
   - [Left and Right Outer Joins](#left-and-right-outer-joins)
-- [Self join](#self-join)
+  - [Self join](#self-join)
 - [Creating users](#creating-users)
 - [Creating views](#creating-views)
+- [Transactions](#transactions)
+  - [Exclusive Table Locks (locking tables)](#exclusive-table-locks-locking-tables)
+  - [Transactions (non MyISAM)](#transactions-non-myisam)
+    - [Row locking and isolation (InnoDB)](#row-locking-and-isolation-innodb)
+  - [ACID Isolation levels](#acid-isolation-levels)
 # Clients
 - mysql CLI
 - PhpMyAdmin
@@ -57,16 +75,18 @@ drop table name; /* Elimina la tabella nel db */
 /* Esempi di tipi di dati:
 text/longtext ecc. (simile a BLOB; per conservare testi molto lunghi), int, char(7)... */
 show tables; /* Elenco delle tabelle nel db */
+show index in tablename; /* Mostra gli indici della tabella (vedere sotto per la definizione di indice) */
 desc tablename; /* Dettagli sulla struttura della tabella */
 quit /* Esce dalla CLI */
 select year(now()), time(now()), date(now()); /* query che restituisce i dati sull'orario */
 select 4*4; /* (16) è possibile fare dei calcoli aritmetici in sql (non è mai molto utile, forse in alcuni casi se si vogliono sommare ecc. due colonne...) */
 ```
-## Engine orriented commands
+## Engine oriented commands
 Volendo le impostazioni, relative agli engine e non, possono anche essere impostate a mano dal file **my.cnf**
 ```sql
 show engines; /* mostra gli engine, ovvero i moduli che costruiscono le tabelle e decidono cosa posso e non posso fare */
 /* nota: MyISAM è molto outdated, non supporta transctions e foreign keys per esempio */
+/* non avendo le transactions però è più veloce */
 show table status; /* Dati tecnici sull tabelle del database */
 create table name (column char(10)) engine="MYISAM"; /* Crea una tabella nel db specificando un engine */
 set default_storage_engine="MYISAM"; /* Cambia l'engine di default */
@@ -148,6 +168,7 @@ select * from users limit 500. 1000; /* Seleziona 1000 utenti dopo i primi 500 (
 select distinct name, age from users; /* Seleziona gli utenti non ripetendo i valori se ho delle righe con età E NOME uguali */
 select count(distinct name) from users; /* Conta i differenti nomi memorizzati */
 select gender, count(*), avg(weight) from survey group by gender; /* Stampa il peso medio di ogni sesso, e specifica il numero di esemplari del sesso */
+explain <query> /* non esegue la query ma spiega come viene eseguita */
 ```
 **having**, usata per porre condizioni con le **aggregate functions** (non supportate da where)
 ```sql
@@ -213,6 +234,18 @@ Usati nel **where**
 - OR
 - NOT
 - XOR (exclusive or, una delle due deve per forza essere falsa)
+## Variables
+Esempio utile di utilizzo di una variabile in una query
+```sql
+/* dichiarazione ed inizializzazione (SQL server necessita di una inizializzazione diversa) */
+set @user = 'handgull';
+/* query che utilizza la variabile */
+select * from users where name = @user
+
+/* Settare variabili all'interno di una select */
+select @max := max(value), @min := min(value) from values; /* struttura simile, se non per i due punti */
+/* eseguendo la query stampo i risultati come se fose una normale query ed in più salvo i valori in delle variabili */
+```
 # Data Types
 ## char vs varchar
 **char(5)** -> alloco SEMPRE 5 caratteri anche se non mi servirebbero tutti<br>
@@ -288,7 +321,7 @@ Stessa cosa vale per la right join, vengonostampate tutte le righe dela tabella 
 select * from person p left join address a on p.id_address = a.id; /* left outer join (outer è opzionale) */
 select * from person p right outer join address a on p.id_address = a.id; /* Right outer join (outer è opzionale) */
 ```
-# Self join
+## Self join
 **JOB INTERVIEW QUESTION**: come capire quali posti sono liberi ed hanno affianco un posto libero:
 ```sql
 select s1.id from seats s1 join seats s2 on s2.id = s1.id+1 where s1.free = true and s2.free = true;
@@ -318,4 +351,70 @@ create algorithm=undefined ... /* usa la miglior soluzione */
 create view as select * from users where id > 100 with check option /* controlla che gli inserimenti futuri rispettino la condizione */
 ```
 > NOTA: se inserisco nella view inserisco anche nella table, solo se però gli altri valori sono nullable (se la view ha algorithm=merge, se no i valori cambiano solo nella view)
+
 > NOTA: un bel vantaggio delle views sarebbe garantire i privilegi all'user solo della views e non della tabella intera 
+# Transactions
+## Exclusive Table Locks (locking tables)
+I table lock sono molto simili alle transaction, il risultato infatti è una specie di "fake transaction"<br>
+Sono utili ad esempio se l'engine non supporta le transaction. (e.g. MYISAM), se si usa INNODB i table lock non sono la miglior soluzione.<br>
+Perchè bloccare una tabella? Nel caso in cui ho delle modifiche pesanti (write) o voglio evitare modifiche da qualsiasi connessione (read).<br><br>
+Esistono 2 tipi di lock READ e WRITE:
+- **read**<br>
+  la connessione che ottiene un lock in lettura ha la garanzia che nessuno (nemmeno lei) potrà compiere operazioni di aggiornamento sulla tabella sino a quando il lock non verrà rilasciato: **nessuno può modificare i dati, ma tutti hanno facoltà di accedervi** in lettura
+- **write**<br>
+  la connessione che ottiene un lock in scrittura ha la possibilità di leggere e modificare i dati in esclusiva; sino a quando il lock non verrà rilasciato, infatti, nessun altro potrà accedere a quei dati **ne in lettura ne in scrittura**
+```sql
+lock tables tabel1 write, table2 read, ... /* Posso bloccare n tabelle */
+unlock tables /* Libero tutte le tabelle bloccate */
+```
+## Transactions (non MyISAM)
+Usando InnoDB di default le transaction si autocommittano in caso di successo, per studiarne il funzionamento disattiviamo l'autocommit:
+```sql
+set autocommit=0; /* evito che le transactions si committino in caso di successo */
+insert into books (name) values ("name1");
+insert into books (name) values ("name2");
+select * from books /* I nuovi valori sono visibili, ma solo in questa connessione */
+commit; /* applico i cambiamenti */
+set autocommit=1;
+
+/* in alternativa posso bloccare l'autocommit solo su una transaction avviandola esplicitamente: */
+start transaction; /* evito che questa transactions si committi in caso di successo */
+insert into books (name) values ("name1");
+savepoint first_insert; /* salvo la situazione fino a qui */
+insert into books (name) values ("name2");
+select * from books /* I nuovi valori sono visibili, ma solo in questa connessione */
+rollback to first_insert; /* torno alla situazione salvata */
+rollback; /* annullo tutti i cambiamenti */
+```
+### Row locking and isolation (InnoDB)
+Un buon caso d'uso: **account transfer**<br>
+Devo trasferire del denaro da un account all'altro, e gli account sono, giustamente, nella stessa tabella. Le transactions sono essenziali per garantire l'atomicità dell'operazione (evitare che dei soldi spariscano o compaiano a causa di un crash). soluzione? **row locking**
+- **row write lock esplicito** (vedi sotto)
+- **row read lock esplicito (aka share lock)**
+```sql
+select id from libraries where name=@name lock in share mode
+```
+## ACID Isolation levels
+Le transactions applicano il row lock, cioè si applica a specifiche row della tabella, nello specifico il lock si applica **agli index delle row**. Questo rende InnoDB più efficente di MyISAM se diverse transactions modificano diverse rows, non bloccando l'intera tabella.
+> NOTA: per non bloccare l'intera tabella le select fatte nella transaction devono coinvolgere quindi dei campi indexati!
+```sql
+select * from users where name="handgull" /* se name non è indexato, il lock è globale a tutta la tabella */
+```
+```sql
+select @@session.tx_isolation /* Per sapere qual'è il livello di isolazione ACID in uso */
+set session transaction isolation level repeatable read; /* setta il livello di isolazione */
+/* NOTA: può essere settato anche nel file di config, come tutte le variabili di mysql */
+```
+In ordine di livello di isolazione (dal più alto al più basso) (più basso = meno feature ma più veloce) (i livelli più alti contengono anche i più bassi)
+- **Serializable**<br>
+  Fornisce un livello di isolazione molto alto: finchè non finisco la transazione le rows coinvolte non possono essere modificate da altre transactions. Spesso overkill.
+- **Repeatable read** - Default<br>
+  Le query eseguite all'interno della transaction restituiscono sempre lo stesso risultato, anche se le rows fuori dalla transaction sono aggiornate.
+> TRICK: se serve un lock sulla scrittura delle rows (come in serializable) si può usare 'for update' dopo la select: (row write lock lock esplicito)
+```sql
+select balance from accounts where id=@account for update
+```
+- **Read committed**<br>
+  leggo le modifiche che sono state committate da altre transactions (ed influiscono sulla select della transaction)
+- **Read uncommitted**<br>
+  Più basso livello, è quasi come non usare le transactions: le modifiche da parte delle altre transaction sono viste anche se non le committo (unico vantaggio rispetto al non usarle è il rollback)
