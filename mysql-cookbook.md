@@ -24,6 +24,7 @@ Table of Contents
   - [Ofted used even by the server that communicate with the DB (CRUD)](#ofted-used-even-by-the-server-that-communicate-with-the-db-crud)
   - [Altering existing schemas](#altering-existing-schemas)
     - [Adding indexes](#adding-indexes)
+- [If exist](#if-exist)
 - [Null and Not Null](#null-and-not-null)
 - [Primary Keys](#primary-keys)
   - [Auto Increment](#auto-increment)
@@ -31,6 +32,7 @@ Table of Contents
   - [Inline views](#inline-views)
   - [Subqueries](#subqueries)
 - [General](#general)
+  - [Error and Warnings](#error-and-warnings)
   - [Importing and exporting data](#importing-and-exporting-data)
     - [CLI](#cli)
   - [Aggregate functions](#aggregate-functions)
@@ -41,8 +43,9 @@ Table of Contents
 - [Data Types](#data-types)
   - [char vs varchar](#char-vs-varchar)
   - [bit](#bit)
-  - [blob](#blob)
-  - [enum](#enum)
+  - [Blob](#blob)
+  - [Enum](#enum)
+  - [Time, Date, Year, Timestamp and Datetime](#time-date-year-timestamp-and-datetime)
 - [Foreign Keys](#foreign-keys)
   - [CONSTRAINTS: Cascade and Restrict](#constraints-cascade-and-restrict)
 - [ER Diagrams](#er-diagrams)
@@ -60,6 +63,18 @@ Table of Contents
   - [Transactions (non MyISAM)](#transactions-non-myisam)
     - [Row locking and isolation (InnoDB)](#row-locking-and-isolation-innodb)
   - [ACID Isolation levels](#acid-isolation-levels)
+- [MySQL Functions](#mysql-functions)
+  - [Date functions](#date-functions)
+  - [Control Flow Functions](#control-flow-functions)
+  - [Casting](#casting)
+- [Advanced: Stored Procedures](#advanced-stored-procedures)
+  - [Permessi di esecuzione](#permessi-di-esecuzione)
+  - [Parameters (in parameters già visti sopra) + local variables](#parameters-in-parameters-gi%C3%A0-visti-sopra--local-variables)
+  - [Store Procedures: If (non quello già visto) + Case](#store-procedures-if-non-quello-gi%C3%A0-visto--case)
+  - [Handling Errors + Loops](#handling-errors--loops)
+  - [Cursors](#cursors)
+    - [Multiple cursors and variable scope](#multiple-cursors-and-variable-scope)
+- [Triggers](#triggers)
 # Clients
 - mysql CLI
 - PhpMyAdmin
@@ -134,6 +149,11 @@ select * from music where band = "tot" and song = "tot" /* 0.00021 */
 select * from music where song = "tot" /* 0.2 l'index ha priorità su band! */
 /* se si ha un index su (a, b, c) senza a e b la ricerca di c sarà comunque lenta */
 ```
+# If exist
+```sql
+create table if not exists tablename;
+drop table if exist tablename;
+```
 # Null and Not Null
 Per evitare che un valore assuma il valore nullo lo si deve specificare nella creazione
 ```sql
@@ -169,6 +189,10 @@ select distinct name, age from users; /* Seleziona gli utenti non ripetendo i va
 select count(distinct name) from users; /* Conta i differenti nomi memorizzati */
 select gender, count(*), avg(weight) from survey group by gender; /* Stampa il peso medio di ogni sesso, e specifica il numero di esemplari del sesso */
 explain <query> /* non esegue la query ma spiega come viene eseguita */
+/* query con contatore nella riga risultante: */
+set @i=0;
+select @i := @i+1, name from users;
+select round(rand()); /* random boolean, più utile nelle store procedures ma 99% inutile */
 ```
 **having**, usata per porre condizioni con le **aggregate functions** (non supportate da where)
 ```sql
@@ -207,6 +231,11 @@ select * from users where id in (1, 2, 3) /* in usato con una lista di valori */
 select * from users where id in (select id from users) /* subquery di esempio (equivalente ad una semplice select *) */
 ```
 # General
+## Error and Warnings
+```sql
+show errors; /* mostra i dettagli sugli errori verificati */
+show warnings; /* mostra i dettagli sulle warning */
+```
 ## Importing and exporting data
 - Alternative grafiche ed intuitive
 ### CLI
@@ -245,6 +274,7 @@ select * from users where name = @user
 /* Settare variabili all'interno di una select */
 select @max := max(value), @min := min(value) from values; /* struttura simile, se non per i due punti */
 /* eseguendo la query stampo i risultati come se fose una normale query ed in più salvo i valori in delle variabili */
+select id, title into @theId, @theTitle from books where id=1 /* mette i 2 valori trovati in 2 variabili */
 ```
 # Data Types
 ## char vs varchar
@@ -263,14 +293,36 @@ insert into table (bitfield) values (b'00000111'); /* Inserisco un valore binari
 select bin(bitfield) from table;
 /* mi restituisce in formato binario il campo 'bitfield'. (111) senza bin() sarebbe stato 7 */
 ```
-## blob
+## Blob
 **blob** = Binary Large Object<br>
 tramite questo tipo si possono conservare grandi file nel db, ad esempio immagini o file pdf, spesso è consigliabile conversare file di questo tipo non in un server sql ma su un server apposito, conservando solo le URI dei file.
-## enum
+## Enum
 Utile per limitare i possibili valori di un campo
 ```sql
 create table name (col enum('hot', 'cold') default 'hot'); /* Crea una tabella con enumerator e default value */
 /* In questo caso solo 'hot' e 'cold' sono valori possibili per il campo col */
+```
+## Time, Date, Year, Timestamp and Datetime
+Time Date e Year
+```sql
+/* Creazione tabella + utile valore di default (solo in time ma applicabile ovunque)*/
+create table moments (id int primary key auto_increment, theYear year, theDate date, theTime time default date(now));
+insert into moments (theYear, theDate, theTime) values
+(year(now()), time(now()), date(now())),
+('2019', '2019-05-13', '08:10:10'); /* Formato dei 3 tipi + funzioni utili per salvare il momento */
+/* un equivalente a now() è CURRENT_TIMESTAMP */
+```
+Timestamp e Datetime<br>
+Apparentemente hanno lo stesso formato
+- le query con timestamp sono cached (rese più veloci con la cache se riusate)
+- datetime permette più operazioni direttamente da sql (vedi sotto in MySQL Functions)
+> OPINIONE: terrei i vantaggi del timestamp, facendo le operazioni complesse alle date lato server
+
+> Parentesi molto importante: VERIFICARE SEMPRE DI STAR SALVANDO LE DATE IN UTC<br>
+> mySQL sembra avere UTC di default quando si usa now(), verificare sempre dal .cnf o velocemente tramite script
+```sql
+/* molto utile il valore di default per i timestamp/datetime */
+create table moments (id int primary key auto_increment, sold_at timestamp default now(), received datetime default now());
 ```
 # Foreign Keys
 Servono per collegare le tabelle tra di loro, (in realtà potrei collegarle anche senza, ma grazie alle foreign keys viene garantita **l'integrità**).
@@ -418,3 +470,196 @@ select balance from accounts where id=@account for update
   leggo le modifiche che sono state committate da altre transactions (ed influiscono sulla select della transaction)
 - **Read uncommitted**<br>
   Più basso livello, è quasi come non usare le transactions: le modifiche da parte delle altre transaction sono viste anche se non le committo (unico vantaggio rispetto al non usarle è il rollback)
+# MySQL Functions
+```sql
+select "Name: " + name from users; /* WRONG */
+select concat("Name:", " ", ..., name) from users; /* CORRECT, concatena la stringa a tutte le righe risultanti */
+select ucase('Fred'); /* FRED */
+select left("England", 3); /* Eng */
+select left(trim('     fox     '), 2); /* 2 funzioni combinate FO */ /* TRIM toglie lo spazio prima e dopo le parole */
+set @string = "Hello world";
+select substr(@string, 6, 2); /* wor */
+/* Nella documentazione ce ne sono molte altre */
+```
+> NOTA: ogni funzione naturalmente se è usata in una select come l'esempio 1 si applica ad ogni riga. ed ognuna è combinabile con le altre.
+## Date functions
+- curdate()
+- curtime()
+```sql
+select * from events where creatind > curdate() - interval 30 day; /* Seleziono gli eventi avvenuti da oggi a 30 giorni fa */
+select date_sub('2010-06-16',interval 5 month); /* Data di 5 mesi prima (sintassi equivalente con funzione) */
+set @born = '1974-05-15';
+select dayname(@born); /* Wednesday */
+select from_days(datediff(curdate(), @born)); /* numero di giorni passati (data 1 - data 2) + from_days()*/
+/* from days crea un date partendo da un numero di giorni. -> anni mesi e giorni di vita in questo caso
+/* Documentazione per molte altre funzioni utili (e.g. la str_to_date o date_format) */
+```
+## Control Flow Functions
+```sql
+set @boolean = false;
+select if (boolean, "true", "false"); /* false (naturalmente può essere usato in query normali)*/
+select ifnull(id1, id2) as identifier from table; /* se il primo parametro è nullo stampo il secondo, stampo il primo altrimenti */
+/* Documentazione per altre funzioni */
+```
+## Casting
+```sql
+/* Apparentemente uguali, ma tipo interno differente */
+select cast('2018-05-16' as char);
+select cast('2018-05-16' as date);
+```
+> **USE CASE**: casting di un numero in una stringa per poter usare concat() e concatenarla
+
+> alcuni linguaggi non permettono il casting in questa maniera (int to str)... mysql sì
+# Advanced: Stored Procedures
+Una store procedures può anche generare dati (tabelle/database/insert) -> **Data generating procedure**<br>
+**Vantaggi**:
+- **Efficenza** (posso comunicare col server dando 1 solo comando, al posto di comunicare n volte col DB)
+- **Sicurezza** (posso dare il permesso all'utente di eseguire solo determinate procedure)<br><br>
+Per poter scrivere molteplici righe nella procedura e far capire quando si ha finito si deve sostituire il delimitatore:<br>
+sp di esempio:
+```sql
+use database; /* Le store procedures sono associate ad un DB */
+delimiter $$ /* il delimiter può essere qualsiasi simbolo */
+create procedure 'HelloWorld'(in inputId int, ...)
+begin
+select concat(cast(inputId as char), "Hello world"); /* Complicazione inutile */
+end $$
+delimiter ; /* torno al normale delimiter */
+call HelloWorld(6); /* Chiama/esegue la sp dando i parametri */
+drop procedure HelloWorld; /* Cancella la sp */
+```
+```sql
+select * from mysql.proc /* Informazioni su tutte le sp di tutti i DB */
+select cast(body as char) from mysql.proc /* codice sorgente di tutte le sp!! */
+```
+## Permessi di esecuzione
+- **invoker**<br>
+  Se uso invoker la sp viene eseguita se si hanno o meno i diritti di fare le azioni descritte
+- **definer** - Rischioso se usato male<br>
+  Se uso questa opzione l'utente specificato esegue la query al suo interno (ottimo per limitare al massimo i diritti dell'utente).
+> Spiegato meglio, se eseguo una sp con define dall'utente2 è come se la eseguisse l'utente1. Per tanto posso eseguire cose che non potrei eseguire con l'utente2
+```sql
+...
+create definer/invoker=user@localhost procedure HelloWorld()
+...
+
+grant execute on procedure database.HelloWorld to user@host /* da il permesso di esecuzione della sp */
+```
+## Parameters (in parameters già visti sopra) + local variables
+```sql
+use database; /* Le store procedures sono associate ad un DB */
+delimiter $$ /* il delimiter può essere qualsiasi simbolo */
+create procedure 'ShowBooks'(in inputId int, out outTitle varchar(50), ...)
+beginù
+/* la seguente variabile non è usata, mostra solo come creare local variables nelle sp */
+declare cur_balance numeric(7, 2) default 0.0 /* 0000000.00 */
+select title into outTitle, ... from books where id = inputId /* VEDI NOTA SOTTO */
+end $$
+delimiter ; /* torno al normale delimiter */
+call ShowBooks(6, @findedName, ...); /* Ricevendo anche dei valori che salvo in variabili */
+```
+> mettere i risultati dentro una variabile con into è molto comodo:<br>
+>nel caso in cui non ho risultati genero una warn, che può essere gestita con una catch
+> I parametri inout uniscono le cose (ricevo un valore, modifico e restituisco lo stesso valore).
+
+**inout**: Probabilmente meno efficente di in e out separati ma meno confusionario sulla struttura che si ha intenzione di dare.
+```sql
+create procedure 'ShowBooks'(inout inputId, ...)
+...
+call ShowBooks(@id, ...); /* Do un valore iniziale e ricevo, sulla stessa variabile, il valore ritornato dalla sp */
+```
+## Store Procedures: If (non quello già visto) + Case
+```sql
+use database; /* Le store procedures sono associate ad un DB */
+delimiter // /* il delimiter può essere qualsiasi simbolo */
+create procedure 'HelloIf'(in inputId int, ...)
+begin
+/* if */
+if flag=true then
+  select "Hello";
+else
+  select "Goodbye";
+end if;
+/* Case */
+case category
+  when 'fruit' then
+    ...
+  when 'vegetable' then
+    ...
+  ...
+  else
+    ...
+end case
+
+end //
+delimiter ; /* torno al normale delimiter */
+call HelloIf(true); /* Hello */
+```
+
+## Handling Errors + Loops
+```sql
+create procedure 'HelloLoops'()
+begin
+/* handlig errors */
+declare exit handler for sqlexception
+begin
+  ...
+  show errors;  /* Carino per il debug */
+end;
+declare exit handler for sqlexception
+begin
+  ...
+  show warnings; /* Carino per il debug */
+end;
+/* loop */
+/* un ottimo utilizzo sarebbe quello di fare molte insert in un ciclo in una store procedure invece che inviare tante richieste separate al db */
+declare count int default 0;
+/* while loop */
+while count < 10 do
+  select 'Hello';
+  set count := count + 1;
+end while;
+/* labelled loop */
+the_loop: loop /* label */
+  if count = 10 then
+    leave the_loop /* break specificando che label abbandono */
+  end if;
+  set count := count + 1;
+end loop;
+
+end //
+```
+## Cursors
+Un modo per scandagliare i risultati di una select, molto **simile ad un iteratore**. E come gli iteratori non lavoro su copie dei dati, ma lavoro con gli indirizzi dei **dati stessi**.
+```sql
+...
+declare user varchar(50);
+declare cur1 cursor for select name from users; /* dichiaro il cursore + specifico la query su cui iterare */
+open cur1;
+declare continue handler for not found set finished := true; /* handler che capisce quando ho iterato tutti gli elementi e setta un flag (qui non dichiarato) */
+fetch cur1 into user; /* metto la row attuale nella variabile e passo alla successiva */
+close cur1;
+...
+```
+### Multiple cursors and variable scope
+Se devo ciclare su tante tabelle con più cursori, come capisco quale di queste è giunta alla fine? l'handler visto fino ad ora è generale!
+> All'interno del primo blocco una store procedure può avere **molteplici blocchi begin/end**, le variabili così hanno **scope** limitato a quel blocco
+
+Quindi per avere **molteplici cursori** posso avere molteplici blocchi e molteplici scope all'interno della funzione.
+# Triggers
+Sono delle sp, senza parametri, che vengono eseguite in automatico in seguito ad un cambiamento dei dati
+```sql
+use database; /* Anche i trigger sono associati ad un DB */
+delimiter $$
+create trigger before_sales_upadtes before update on sales for each row
+/* NOTA: 'for each row' è solo uno standard, non ho personalizzazione a riguardo */
+begin
+
+insert into sales_update(product_id, changed_at, before_value, after_value)
+  value (old.id, now(), old.value, new.value); /* old e new si riferiscono a come era prima e dopo la row (row.column) */
+
+end $$;
+delimiter ;
+drop trigger before_sales_upadtes; /* Cancella il trigger */
+/* Validation -> basta usare le tecnologie viste nelle sp */
+```
