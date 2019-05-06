@@ -75,6 +75,7 @@ Table of Contents
   - [Cursors](#cursors)
     - [Multiple cursors and variable scope](#multiple-cursors-and-variable-scope)
 - [Triggers](#triggers)
+- [User defined functions](#user-defined-functions)
 # Clients
 - mysql CLI
 - PhpMyAdmin
@@ -657,9 +658,29 @@ begin
 
 insert into sales_update(product_id, changed_at, before_value, after_value)
   value (old.id, now(), old.value, new.value); /* old e new si riferiscono a come era prima e dopo la row (row.column) */
+  set new.value  = 567; /* Con questo set io setto il valore nella tabella sales! */
 
 end $$;
 delimiter ;
 drop trigger before_sales_upadtes; /* Cancella il trigger */
 /* Validation -> basta usare le tecnologie viste nelle sp */
+```
+# User defined functions
+La differenza sostanziale tra stored procedures e user defined functions è che quest'ultime ritornano un **singolo valore**.
+> Spesso le SP si rivelano più utili
+
+Esempio di user defined function:
+```sql
+use database;
+
+delimiter $$
+create function sales_after_tax(tax float, day date) returns numeric(10,2)
+begin
+
+declare result numeric(10,2);
+select sum(transaction_value) * ((100 - tax)/100) from sales where date(sold_at) = day into result;
+return result;
+
+end $$;
+delimiter ;
 ```
